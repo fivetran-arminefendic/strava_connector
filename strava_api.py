@@ -39,7 +39,6 @@ def get_data(request):
     data = []
     cursors = []
     state = {}
-    # NEW CODE
     page = 1
     events_per_page = 1
     is_paginated = {}
@@ -52,7 +51,6 @@ def get_data(request):
             page = request['secrets']['is_pag'].get(token)
             user_data = make_api_call(request, token, page, events_per_page)
             
-            # NEW CODE
             if len(user_data) == events_per_page:
                 is_paginated[token] = page + 1
                 has_more = True
@@ -90,7 +88,6 @@ def make_api_call(request, token, page = 1, events_per_page = 200, after = None)
     }
 
     get_access_token = requests.post(auth_url, data=payload, verify=False)
-    # pro tip: Holding your left
     if get_access_token.status_code != 200:
         print(f'{get_access_token.status_code} Error: There was an issue with getting the access token - check the POST request')
         return
@@ -104,7 +101,6 @@ def make_api_call(request, token, page = 1, events_per_page = 200, after = None)
         print(f'{get_user_data.status_code} Error: There was an issue with getting the user data - check the GET request to the activities endpoint')
         return
 
-    # pro tip: Happy path comes last
     user_data = get_user_data.json()
     return user_data
 
@@ -134,8 +130,6 @@ def build_the_state(refresh_tokens, cursors):
     return state
 
 def flatten_data(data):
-    # Each users data is in a list, merge those lists in to one large list
-    # LB
     if len(data) == 1:
         return data
     else:
@@ -146,9 +140,6 @@ def flatten_data(data):
             i += 1
     return temp
 
-# LB
-# Function definition cleaner takes precendence over main/upper scope cleaner
-# def assemble_response(data, state, is_assembled): 
 def assemble_response(data, state, is_paginated, has_more):
     response_dict = {
         'secrets': {

@@ -156,9 +156,8 @@ def assemble_response(data, state, is_paginated, has_more):
         },
         'hasMore': has_more
     }
-    return response_dict
-    # *! Make sure to return a json here
-    #return json.dumps(response_dict)
+    # return response_dict
+    return json.dumps(response_dict)
 
 if __name__ == '__main__':
     main(

@@ -94,18 +94,19 @@ def flatten_list(_2d_list):
             flat_list.append(element)
     return flat_list
 
-if __name__ == '__main__':
-    main(
-        {
-            'state': {
-                '5dc2bef4b13f135c5ddab9563e74742eec1fa3df': 1658880473
-            },
-            'secrets': {
-                'client_id': '91382',
-                'client_secret': '20a49adb714cc2314bbdf5f1514a6b86cd4838eb',
-                'is_pag': {
-                    '5dc2bef4b13f135c5ddab9563e74742eec1fa3df': 2
-                }
-            },
-            'hasMore': True
-        })
+# --- For Testing --- #
+# if __name__ == '__main__':
+#     main(
+#         {
+#             'state': {
+#                 '5dc2bef4b13f135c5ddab9563e74742eec1fa3df': 1658880473
+#             },
+#             'secrets': {
+#                 'client_id': '91382',
+#                 'client_secret': '20a49adb714cc2314bbdf5f1514a6b86cd4838eb',
+#                 'is_pag': {
+#                     '5dc2bef4b13f135c5ddab9563e74742eec1fa3df': 2
+#                 }
+#             },
+#             'hasMore': True
+#         })

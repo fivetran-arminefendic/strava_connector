@@ -1,32 +1,55 @@
 from pprint import pprint
 import requests
 import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-import datetime
+#urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import logging
 import json
 import flask
-from refresh_tokens import refresh_tokens
 import time
 from calendar import timegm
+import gsheet_data
+
+# global var for testing pagination
+events_per_page = 1
 
 def main(request):
     try:
         # Parse the request from Fivetran
         # request = request.get_json()
 
-        # Request data from Strava
-        all_data = get_data(request)
-        data = flatten_data(all_data[0]) # flatten_data returns a single list that Fivetran can accept
-        state = all_data[1]
-        is_paginated = all_data[2]
-        has_more = all_data[3]
+        refresh_tokens = gsheet_data.main(request)
+
+        # Fivetran response varaibles
+        data = []
+        state = {}
+        page = 1
+        is_paginated = []
+        has_more = False
+
+        # Check for pagination and make the appropriate calls to Strava
+        if request['hasMore'] == True: 
+            # *! Page is important here so pass it thru to make_api_call!
+            page = request['secrets']['page']
+            data = get_paginated_data(request, page)
+            state = request['state']
+            is_paginated = check_for_pagination(data, request['secrets']['is_pag'])
+        
+        else:
+            data_and_cursors = get_data(request, refresh_tokens, page)
+            data = data_and_cursors[0]
+            cursors = data_and_cursors[1]
+            state = build_the_state(refresh_tokens, cursors)
+            is_paginated = check_for_pagination(data, refresh_tokens)
+        
+        # Prep data for Fivetran
+        data = flatten_2d_list(data)
+
+        has_more = True if len(is_paginated) > 0 else False
+        if len(is_paginated) > 0: page += 1
 
         # Assemble response for Fivetran
-        response = assemble_response(data, state, is_paginated, has_more)
-        print(response)
-        print(' --------------- ')
-        print(response['insert']['strava_data'][0][0]['name'])
+        response = assemble_response(data, state, is_paginated, has_more, page)
+        pprint(response, sort_dicts=False)
 
         # Send to Fivetran
         headers = {'Content-Type': 'application/json'}
@@ -35,46 +58,39 @@ def main(request):
     except Exception as e:
         logging.error('Exception occurred', exc_info=True)
 
-def get_data(request):
+def get_data(request, refresh_tokens, page):
+    global events_per_page
     data = []
-    cursors = []
-    state = {}
-    page = 1
-    events_per_page = 1
-    is_paginated = {}
-    has_more = False
+    cursors =[]
+    for token in refresh_tokens:
+        # *! After is important here due to incremental syncs so pass it to make_api_call!
+        after = None
+        if len(request['state']) != 0:
+            after = request['state'].get(token) 
+        
+        user_data = make_api_call(request, token, page, events_per_page, after)
+        data.append(user_data)
 
-    # --- Handling of paginated data --- #
-    if request['hasMore'] == True: 
-        for token in request['secrets']['is_pag']:
-            # *! Page is important here so pass it to make_api_call!
-            page = request['secrets']['is_pag'].get(token)
-            user_data = make_api_call(request, token, page, events_per_page)
-            
-            if len(user_data) == events_per_page:
-                is_paginated[token] = page + 1
-                has_more = True
-            data.append(user_data)
-            
-        # Since the cursor does not update with paginated data - keep the same cursors
-        state = request['state']
+        cursors = build_the_cursors(request, user_data, token, cursors)
+
+    return data, cursors
+
+def get_paginated_data(request, page):
+    global events_per_page
+    data = []
+    for token in request['secrets']['is_pag']:
+        user_data = make_api_call(request, token, page, events_per_page)
+        data.append(user_data)
+
+    return data
+
+def check_for_pagination(data, refresh_tokens): # pass in request as well
+    is_paginated = []
+    for i in range(0, len(data)):
+        if len(data[i]) == 1:
+            is_paginated.append(refresh_tokens[i])
     
-    else:
-        for token in refresh_tokens:
-            # *! After is important here due to incremental syncs so pass it to make_api_call!
-            after = request['state'].get(token)
-            user_data = make_api_call(request, token, page, events_per_page, after)
-
-            if len(user_data) == events_per_page:
-                is_paginated[token] = 2 # move to the next page
-                has_more = True
-            data.append(user_data)
-
-            cursors = build_the_cursors(request,user_data,token,cursors)
-    
-        state = build_the_state(refresh_tokens, cursors)
-                
-    return data, state, is_paginated, has_more
+    return is_paginated
 
 def make_api_call(request, token, page = 1, events_per_page = 200, after = None):
     auth_url = 'https://www.strava.com/oauth/token' # base url to get a new access token using the refersh token
@@ -104,7 +120,7 @@ def make_api_call(request, token, page = 1, events_per_page = 200, after = None)
     user_data = get_user_data.json()
     return user_data
 
-def build_the_cursors(request,user_data,token,cursors):
+def build_the_cursors(request,user_data,token, cursors):
     # --- User has no new activities - retain the existing cursor --- #
     if len(user_data) == 0:
         cursors.append(request['state'][token])
@@ -124,26 +140,29 @@ def build_the_cursors(request,user_data,token,cursors):
     return cursors
 
 def build_the_state(refresh_tokens, cursors):
-    state={}
+    state = {}
     for key, value in zip(refresh_tokens, cursors):
         state[key] = value
+
     return state
 
-def flatten_data(data):
-    if len(data) == 1:
-        return data
-    else:
-        temp = data[0] + data[1]
-        i = 2
-        while i < len(data):
-            temp = temp + data[i]
-            i += 1
-    return temp
+def flatten_2d_list(list_2d):
+    flat_list = []
+    # Iterate through the outer list
+    for element in list_2d:
+        if type(element) is list:
+            # If the element is of type list, iterate through the sublist
+            for item in element:
+                flat_list.append(item)
+        else:
+            flat_list.append(element)
+    return flat_list
 
-def assemble_response(data, state, is_paginated, has_more):
+def assemble_response(data, state, is_paginated, has_more, page):
     response_dict = {
         'secrets': {
-            'is_pag': is_paginated
+            'is_pag': is_paginated,
+            'page': page
         },
         'state': state,
         'schema': {
@@ -156,23 +175,21 @@ def assemble_response(data, state, is_paginated, has_more):
         },
         'hasMore': has_more
     }
-    # return response_dict
-    return json.dumps(response_dict)
+    return response_dict
+    # return json.dumps(response_dict)
 
 if __name__ == '__main__':
     main(
         {
             'state': {
-                '5dc2bef4b13f135c5ddab9563e74742eec1fa3df': 1658880473
             },
             'secrets': {
                 'client_id': '91382',
                 'client_secret': '20a49adb714cc2314bbdf5f1514a6b86cd4838eb',
-                'is_pag': {
-                    '5dc2bef4b13f135c5ddab9563e74742eec1fa3df': 2
-                }
+                "is_pag": [],
+                "page": 1,
             },
-            'hasMore': True
+            'hasMore': False
         })
 
 

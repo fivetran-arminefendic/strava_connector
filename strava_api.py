@@ -13,8 +13,21 @@ disable_warnings(InsecureRequestWarning)
 def main(request):
     try:
         # --- Parse the request from Fivetran --- #
-        request = request.get_json()
+        #request = request.get_json()
         refresh_tokens = gsheet_data.main(request)
+
+        # # --- Grab the usernames --- #
+        # #usernames = get_usernames(request, refresh_tokens)
+        # if len(request('state')) == 0:
+        #     print('handling of historic sync')
+        #     # go usernames for all the users (tokens)
+        # else:
+        #     for token in refresh_tokens:
+        #         if token in request('state')('current_state').keys():
+        #             print("get the username for the user")
+        #             username = username_api_call()
+        #             #usernames.apped(username)
+
 
         # --- Fivetran response varaibles --- #
         data = []
@@ -50,13 +63,41 @@ def main(request):
 
         # --- Assemble response for Fivetran --- #
         response = assemble_response(data, state, is_paginated, has_more, page)
-
+        print(response)
         # --- Send to Fivetran --- #
         headers = {'Content-Type': 'application/json'}
-        return flask.make_response(response,200,headers)
+        #return flask.make_response(response,200,headers)
 
     except Exception as e:
         logging.error('Exception occurred', exc_info=True)
+
+# def username_api_call():
+#     auth_url = 'https://www.strava.com/oauth/token' # base url to get a new access token using the refersh token
+#     athlete_url = 'https://www.strava.com/api/v3/athlete'
+#     payload = {
+#         'client_id': request['secrets']['client_id'],
+#         'client_secret': request['secrets']['client_secret'],
+#         'refresh_token': token,
+#         'grant_type': 'refresh_token',
+#         'f': 'json'
+#     }
+
+#     get_access_token = requests.post(auth_url, data=payload, verify=False)
+#     if get_access_token.status_code != 200:
+#         print(f'{get_access_token.status_code} Error: There was an issue with getting the access token - check the POST request')
+#         return
+
+#     access_token = get_access_token.json()['access_token']
+
+#     header = {'Authorization': 'Bearer ' + access_token}
+#     get_username = requests.get(athlete_url, headers=header)
+#     if get_username.status_code != 200:
+#         print(f'{get_username.status_code} Error: There was an issue with getting the username - check the GET request to the athlete endpoint')
+#         return
+    
+#     username = get_username.json()['username']
+
+#     return username
 
 def get_data(request, refresh_tokens, page):
     data = []
@@ -119,16 +160,21 @@ def make_api_call(request, token, page = 1, after = None, events_per_page = 200)
     return user_data
 
 def build_the_cursors(request,user_data,token, cursors):
-    # --- User has no new activities - retain the existing cursor --- #
-    if len(user_data) == 0:
-        cursors.append(request['state']['current_state'][token])
 
-    # --- Historical sync for the user - api returns latest activity first, DESC --- #
-    # Catch historical sync for all users or when a new user is added
+    # --- Handling of a user with no data during historical/initial sync -- #
+    if len(request['state']) == 0 and len(user_data) == 0:
+        pass
+
+    # --- Historical sync for the user(s) - api returns latest activity first, DESC --- #
+    # nitial/historical sync for all users OR detect that a new user is added
     elif len(request['state']) == 0 or request['state']['current_state'].get(token) == None:
         user_cursor = time.strptime(user_data[0]['start_date'], '%Y-%m-%dT%H:%M:%SZ')
         epoch_user_cursor = timegm(user_cursor)
         cursors.append(epoch_user_cursor)
+
+    # --- User has no new activities - retain the existing cursor --- #
+    elif len(user_data) == 0:
+        cursors.append(request['state']['current_state'][token])
 
     # --- Incremental sync - api returns latest activity last, ASC --- #
     else:
@@ -174,3 +220,14 @@ def assemble_response(data, state, is_paginated, has_more, page):
     }
 
     return json.dumps(response_dict)
+
+if __name__ == '__main__':
+    main(
+        {
+            'state': {}
+            ,
+            'secrets': {
+                'client_id': '91382',
+                'client_secret': '20a49adb714cc2314bbdf5f1514a6b86cd4838eb'
+            }
+        })

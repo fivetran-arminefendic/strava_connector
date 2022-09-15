@@ -1,4 +1,4 @@
-![strava logo](https://cdn.iconscout.com/icon/free/png-256/strava-2752062-2284879.png)
+![strava logo](https://cdn.iconscout.com/icon/free/png-128/strava-2752062-2284879.png)
 # Strava Connector
 This code is made to work in conjuction with a [Fivetran custom connector](https://fivetran.com/docs/functions/google-cloud-functions#googlecloudfunctions) using a Google Cloud Function. 
 

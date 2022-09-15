@@ -31,15 +31,16 @@ def main(request):
         print(err)
 
     # --- Get refresh tokens and update google sheet --- #
-    refresh_tokens = update_gsheet(request, values, sheet, spreadsheet_id, range)
+    refresh_tokens = rw_gsheet(request, values, sheet, spreadsheet_id, range)
 
     # --- Prepare the data for post processing - remove duplicates and null values --- #
     refresh_tokens = flatten_list(refresh_tokens)
-    refresh_tokens = [*set((filter(None, refresh_tokens)))]
+    refresh_tokens = list(dict.fromkeys(refresh_tokens)) # fromkeys() removes duplicates; using set() changes the order of the tokens
+    refresh_tokens = list(filter(None, refresh_tokens))
 
     return(refresh_tokens)
 
-def update_gsheet(request, values, sheet, spreadsheet_id, range):
+def rw_gsheet(request, values, sheet, spreadsheet_id, range):
     row_num = 1 # offset for the header row in the sheet
     row_numbers = []
     new_refresh_tokens = []
